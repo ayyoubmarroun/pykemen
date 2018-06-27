@@ -9,5 +9,5 @@ setup(
     author='Ayyoub Marroun',
     author_email='ayyoub@metriplica.com',
     keywords=['google apis', 'utilities'],
-    url='https://gitlab.com/...'
+    url='https://gitlab.com/metriplica/I_plus_Q/pykemen'
 )

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/tbd.iml" filepath="$PROJECT_DIR$/.idea/tbd.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/pykemen.iml" filepath="$PROJECT_DIR$/.idea/pykemen.iml" />
     </modules>
   </component>
 </project>
