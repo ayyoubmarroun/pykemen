@@ -15,22 +15,23 @@ import os
 import json
 import re
 
-
 class Analytics(object):
     """Google Analytics class.
 
     Query unsampled reports from Analytics and cache results.
     Also has a built in method to upload data to Analytics through data import."""
     CACHE_DIR = './cache/{profile}/{id}/'
-    CACHE_REPORT = './cache/{profile}/{id}/report_{date}.csv'
+    CACHE_REPORT = './cache/{profile}/{id}/report_{start_date}_{end_date}.csv'
+    CACHE_UNSAMPLED_REPORT = './cache/{profile}/{id}/unsampled_report_{date}.csv'
 
     class AnalyticsReport(object):
         """"AnalyticsReport class.
 
         Stores all properties of an Analytics report and returns a dataFrame of the report."""
-        REPORT_RE = r"report_[0-9]{4}-[0-9]{2}-[0-9]{2}\.csv"
+        REPORT_RE = r"report_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4}-[0-9]{2}-[0-9]{2}\.csv"
+        UNSAMPLED_REPORT_RE = r'unsampled_report_[0-9]{4}-[0-9]{2}-[0-9]{2}\.csv'
 
-        def __init__(self, path, start_date, end_date, dimensions, metrics, sort):
+        def __init__(self, path, start_date, end_date, dimensions, metrics, filters, segments, sort, unsampled=False):
             """Init method initialize and create AnalyticsReport class.
 
             Args:
@@ -39,17 +40,23 @@ class Analytics(object):
                 end_date (str): end date of the report (format: %Y-%m-%d)
                 dimensions (str): comma separated Analytics dimensions
                 metrics (str): comma separated Analytics metrics
+                filters (str): filters used with analytics api
+                segments (str): segments used with analytics api
                 sort (str): comma separated dimensions and metrics to sort by the report.
 
             Returns:
                 Analytics.AnalyticsReport: with the given configuration.
             """
             self.path = path
+            self.report_re = Analytics.AnalyticsReport.UNSAMPLED_REPORT_RE if unsampled else Analytics.AnalyticsReport.REPORT_RE
             self.start_date = start_date
             self.end_date = end_date
             self.dimensions = dimensions.split(",")
             self.metrics = metrics.split(",")
+            self.filters = filters
+            self.segments = segments
             self.sort = sort.split(",")
+            self.unsampled = unsampled
 
         def to_data_frame(self):
             """Retrieve report into a pandas dataFrame.
@@ -60,15 +67,22 @@ class Analytics(object):
                 pd.DataFrame
             """
             filenames = os.listdir(self.path)
-            filenames = filter(lambda x: re.match(Analytics.AnalyticsReport.REPORT_RE, x), filenames)
-            filenames = filter(lambda x: filter_report_files_by_date(x, self.start_date, self.end_date), filenames)
+            filenames = filter(lambda x: re.match(self.report_re, x), filenames)
+            if self.unsampled:
+                filenames = filter(lambda x: filter_report_files_by_date(x, self.start_date, self.end_date), filenames)
+            else:
+                filenames = filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(self.start_date, self.end_date), filenames)
             filenames.sort()
             dataframes = (pd.read_csv(self.path + filename, index_col=False, dtypes=self._get_dtypes()) for filename in
-                          filenames)
+                        filenames)
             dataframe = pd.concat(dataframes, ignore_index=True)
             dataframe = dataframe.groupby(self.dimensions).sum().reset_index()
+            for sort in self.sort:
+                if sort.startwith('-'):
+                    dataframe = dataframe.sort_values(by=[sort[1:]], ascending=False)
+                else:
+                    dataframe = dataframe.sort_values(by=[sort])
             return dataframe
-
         def to_csv(self, filename):
             """Stores the report into a csv file.
 
@@ -103,97 +117,109 @@ class Analytics(object):
                  "https://www.googleapis.com/auth/analytics.manage.users"]
         self._analyticsService = create_api("analytics", "v3", scope, secrets, credentials)
 
-    def get_report(self, filename, data_frame=False, **kwargs):
-        """Downloads an Analytics report and stores it into a file, or returns it to a pd.DataFrame as choosen.
-
-        Args:
-            filename (str): path where to store the report.
-            data_frame (bool): A boolean to decide if to return a pd.DataFrame or store report to a file.
-            kwargs (**dict): Analytics report configuration variable with all required parameters
-
-        Returns:
-            pd.DataFrame: if data_frame is true returns a pd.DataFrame, otherwise stores a file and returns None
-        """
-        last_hit = 0
-        columns = (kwargs.get('dimensions') + "," + kwargs.get("metrics")).split(",")
-        rows = []
-        report = self._analyticsService.data().ga().get(kwargs).execute()
-        iteration = 1
-        rows.extend(report.get('rows', []))
-        while report.get('nextLink'):
-            try:
-                time.sleep(.1 - (time.time() - last_hit))
-            except ValueError:
-                pass
-            kwargs['start_index'] = 1 + kwargs.get('max_results', 1000) * iteration
-            report = self._analyticsService.data().ga().get(kwargs).execute()
-            last_hit = time.time()
-            rows.extend(report.get('rows', []))
-        df = pd.DataFrame(rows, columns=columns)
-        if data_frame:
-            return df
-        df.to_csv(filename.replace(".csv", "_{frm}_{to}.csv".format(frm=kwargs.get('start_date'),
-                                                                    to=kwargs.get('end_date'))),
-                  index=False, encoding='utf-8')
-        print("Saved file " + filename.replace(".csv", "_{frm}_{to}.csv".format(frm=kwargs.get('start_date'),
-                                                                                to=kwargs.get('end_date'))))
-
-    def get_unsampled_report(self, **kwargs):
-        """Downloads unsampled data from Analytics and caches the result. If the data is alredy cached, skips the
+    def get_report(self, verbose=False, unsampled = False, **kwargs):
+        """Downloads data from Analytics and caches the result. If the data is alredy cached, skips the
         download and directly returns an Analytics.AnalyticsReport.
 
         Args:
+            verbose (boolean): True will print the logs in the console.
+            unsampled (boolean): True will download the report day by day to try get unsampled data.
             kwargs (**dict): Analytics report configuration variable with all required parameters
 
         Returns:
             Analytics.AnalyticsReport
         """
         last_hit = 0
-        startDate = datetime.strptime(kwargs.get("start_date"), "%Y-%m-%d")
-        endDate = datetime.strptime(kwargs.get("end_date"), "%Y-%m-%d")
-        diffDays = (endDate - startDate).days + 1
-        columns = ",".join([kwargs.get('dimensions'), kwargs.get("metrics"), kwargs.get('filters'), kwargs.get('sort')])
-        id = hashlib.md5(columns).hexdigest()
-        columns = columns.split(",")
-        if not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id)):
-            os.makedirs(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id))
+        
+        
+        id_to_hash = ",".join([
+            kwargs.get('dimensions', '').encode('utf8'), 
+            kwargs.get('metrics', '').encode('utf8'),
+            kwargs.get('filters', '').encode('utf8'),
+            kwargs.get('segments', '').encode('utf8'),
+            ])
+        id_ = hashlib.md5(id_to_hash).hexdigest()
+        start_date = kwargs.get('start_date')
+        end_date = kwargs.get('end_date')
+        columns = ','.join([kwargs.get('dimensions'), kwargs.get('metrics')])
+        columns = columns.split(',')
         rows = []
-        for day in range(diffDays):
-            actualDate = (startDate + timedelta(days=day)).strftime("%Y-%m-%d")
-            filename = Analytics.CACHE_REPORT.format(profile=kwargs.get('ids').replace('ga:', ''), id=id,
-                                                     date=actualDate)
-            if not self._in_cache(kwargs.get('ids').replace('ga:', ''), id, actualDate):
-                kwargs["start_date"] = actualDate
-                kwargs["end_date"] = actualDate
-                kwargs["start_index"] = 1
+        if not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
+            os.makedirs(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_))
+        
+        if not unsampled:
+            filename = Analytics.CACHE_REPORT.format(
+                profile=kwargs.get('ids').replace('ga:', ''), 
+                id=id_, 
+                start_date=start_date, 
+                end_date=end_date
+            )
+            if not self._in_cache(kwargs.get('ids').replace('ga:', ''), id_, start_date, end_date):
                 report = self._analyticsService.data().ga().get(**kwargs).execute()
-                if report.get("containsSampledData"):
-                    warnings.warn("There are sampled results on the report: {dimensions}{metrics} - date{date}".format(
-                        dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), date=actualDate))
-                rows.extend(report.get("rows", []))
+                last_hit = time.time()
+                if report.get('containSampledData'):
+                    warnings.warn("There are sampled results on the report: {dimensions}{metrics} - date: {start_date} to {end_date}".format(
+                            dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), start_date=start_date, end_date=end_date))
+                rows.extend(report.get('rows', []))
                 iteration = 1
-                while report.get("nextLink"):
+                while report.get('nextLink'):
                     try:
                         time.sleep(.1 - (time.time()-last_hit))
                     except ValueError:
                         pass
-                    kwargs["start_index"] = 1 + kwargs.get('max_results', 1000) * iteration
+                    kwargs['start_index'] = 1 + kwargs.get('max_results', 1000) * iteration
                     report = self._analyticsService.data().ga().get(**kwargs).execute()
                     last_hit = time.time()
-                    rows.extend(report.get("rows", []))
+                    rows.extend(report.get('rows', []))
                     iteration += 1
+                df = pd.DataFrame(data=rows, columns=columns)
+                df.to_csv(filename, index=False, encoding='utf-8')
+                if verbose:
+                    print('Saved file' + filename)
+        else:
+            startDate = datetime.strptime(start_date, "%Y-%m-%d")
+            endDate = datetime.strptime(end_date, "%Y-%m-%d")
+            diffDays = (endDate - startDate).days + 1
+            for day in range(diffDays):
+                actualDate = (startDate + timedelta(days=day)).strftime("%Y-%m-%d")
+                filename = Analytics.CACHE_UNSAMPLED_REPORT.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_,
+                                                        date=actualDate)
+                if not self._in_cache_by_day(kwargs.get('ids').replace('ga:', ''), id_, actualDate):
+                    kwargs["start_date"] = actualDate
+                    kwargs["end_date"] = actualDate
+                    kwargs["start_index"] = 1
+                    report = self._analyticsService.data().ga().get(**kwargs).execute()
+                    if report.get("containsSampledData"):
+                        warnings.warn("There are sampled results on the report: {dimensions}{metrics} - date{date}".format(
+                            dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), date=actualDate))
+                    rows.extend(report.get("rows", []))
+                    iteration = 1
+                    while report.get("nextLink"):
+                        try:
+                            time.sleep(.1 - (time.time()-last_hit))
+                        except ValueError:
+                            pass
+                        kwargs["start_index"] = 1 + kwargs.get('max_results', 1000) * iteration
+                        report = self._analyticsService.data().ga().get(**kwargs).execute()
+                        last_hit = time.time()
+                        rows.extend(report.get("rows", []))
+                        iteration += 1
                     df = pd.DataFrame(data=rows, columns=columns)
                     df.to_csv(filename, index=False, encoding='utf-8')
-                    print("Saved file " + filename)
+                    if verbose:
+                        print("Saved file " + filename)
                     rows = []
 
         return Analytics.AnalyticsReport(
-            Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id),
-            kwargs.get('start_date'),
-            kwargs.get('end_date'),
-            kwargs.get('dimensions'),
-            kwargs.get('metrics'),
-            kwargs.get('sort')
+            Analytics.CACHE_DIR.format(profile=kwargs.get('ids', '').replace('ga:', ''), id=id_),
+            start_date,
+            end_date,
+            kwargs.get('dimensions', ''),
+            kwargs.get('metrics', ''),
+            kwargs.get('filters', ''),
+            kwargs.get('segments', ''),
+            kwargs.get('sort', ""),
+            unsampled=unsampled
         )
 
     def data_import(self, accountId, webPropertyId, dataSourceId, filename):
@@ -226,7 +252,7 @@ class Analytics(object):
         if response.get('status') == 'COMPLETED':
             pass
 
-    def _in_cache(self, profile, id_, date):
+    def _in_cache_by_day(self, profile, id_, date):
         """Check if a specific report is stored in cache.
 
         Args:
@@ -236,7 +262,23 @@ class Analytics(object):
 
         Returns:
             bool: True if the report is cached, False otherwise"""
-        path = Analytics.CACHE_REPORT.format(profile=profile, id=id_, date=date)
+        report_path = Analytics.CACHE_UNSAMPLED_REPORT
+        path = report_path.format(profile=profile, id=id_, date=date)
+        return os.path.isfile(path)
+
+    def _in_cache(self, profile, id_, start_date, end_date):
+        """Check if a specific report is stored in cache.
+
+        Args:
+            profile (str): profile id of the report
+            id_ (str): hash id of the report
+            start_date (str): start date of the report
+            end_date (boolean): end date of the report
+
+        Returns:
+            bool: True if the report is cached, False otherwise"""
+        report_path = Analytics.CACHE_REPORT
+        path = report_path.format(profile=profile, id=id_, start_date=start_date, end_date=end_date)
         return os.path.isfile(path)
 
     def clear_cache(self, id_, lifetime=180):
