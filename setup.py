@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pykemen',
-    version='0.0.1',
+    version='0.0.8',
     description='a pykemen pip-installable package',
     license='Eiup',
     packages=['pykemen'],
