@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pykemen',
-    version='0.0.8',
+    version='0.0.8b',
     description='a pykemen pip-installable package',
     license='Eiup',
     packages=['pykemen'],
@@ -10,7 +10,7 @@ setup(
     author_email='ayyoub@metriplica.com',
     keywords=['google apis', 'utilities'],
     url='https://github.com/ayyoubmarroun/pykemen',
-    download_url='https://github.com/ayyoubmarroun/pykemen/archive/0.0.8.tar.gz',
+    download_url='https://github.com/ayyoubmarroun/pykemen/archive/0.0.8b.tar.gz',
     install_requires=[
         'httplib2',
         'pandas',
