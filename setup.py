@@ -1,11 +1,17 @@
 from setuptools import setup
+try:
+    from setuptools import setup, find_packages
+except ImportError:
+    from distutils.core import setup, find_packages
 
 setup(
     name='pykemen',
-    version='0.0.8b',
+    version='0.0.9',
     description='a pykemen pip-installable package',
     license='Eiup',
-    packages=['pykemen'],
+    packages=find_packages(),
+    include_package_data=True,
+    package_data={'pykemen': ['google/*.py', '*']},
     author='Ayyoub Marroun',
     author_email='ayyoub@metriplica.com',
     keywords=['google apis', 'utilities'],
