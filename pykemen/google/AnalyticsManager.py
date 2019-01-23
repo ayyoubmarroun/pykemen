@@ -67,20 +67,20 @@ class Analytics(object):
                 pd.DataFrame
             """
             filenames = os.listdir(self.path)
-            filenames = filter(lambda x: re.match(self.report_re, x), filenames)
+            filenames = list(filter(lambda x: re.match(self.report_re, x), filenames))
             if self.unsampled:
-                filenames = filter(lambda x: filter_report_files_by_date(x, self.start_date, self.end_date), filenames)
+                filenames = list(filter(lambda x: filter_report_files_by_date(x, self.start_date, self.end_date), filenames))
             else:
-                filenames = filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(self.start_date, self.end_date), filenames)
+                filenames = list(filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(self.start_date, self.end_date), filenames))
             filenames.sort()
-            dataframes = (pd.read_csv(self.path + filename, index_col=False, dtypes=self._get_dtypes()) for filename in
+            dataframes = (pd.read_csv(self.path + filename, index_col=False, dtype=self._get_dtypes()) for filename in
                         filenames)
             dataframe = pd.concat(dataframes, ignore_index=True)
             dataframe = dataframe.groupby(self.dimensions).sum().reset_index()
             for sort in self.sort:
-                if sort.startwith('-'):
+                if sort.startswith('-'):
                     dataframe = dataframe.sort_values(by=[sort[1:]], ascending=False)
-                else:
+                elif sort != '':
                     dataframe = dataframe.sort_values(by=[sort])
             return dataframe
         def to_csv(self, filename):
@@ -117,7 +117,7 @@ class Analytics(object):
                  "https://www.googleapis.com/auth/analytics.manage.users"]
         self._analyticsService = create_api("analytics", "v3", scope, secrets, credentials)
 
-    def get_report(self, verbose=False, unsampled = False, **kwargs):
+    def get_report(self, verbose=False, unsampled = False, cache = True, **kwargs):
         """Downloads data from Analytics and caches the result. If the data is alredy cached, skips the
         download and directly returns an Analytics.AnalyticsReport.
 
@@ -133,12 +133,12 @@ class Analytics(object):
         
         
         id_to_hash = ",".join([
-            kwargs.get('dimensions', '').encode('utf8'), 
-            kwargs.get('metrics', '').encode('utf8'),
-            kwargs.get('filters', '').encode('utf8'),
-            kwargs.get('segments', '').encode('utf8'),
+            kwargs.get("dimensions", ""), 
+            kwargs.get("metrics", ""),
+            kwargs.get("filters", ""),
+            kwargs.get("segments", ""),
             ])
-        id_ = hashlib.md5(id_to_hash).hexdigest()
+        id_ = hashlib.md5(id_to_hash.encode('utf8')).hexdigest()
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
         columns = ','.join([kwargs.get('dimensions'), kwargs.get('metrics')])
@@ -154,7 +154,7 @@ class Analytics(object):
                 start_date=start_date, 
                 end_date=end_date
             )
-            if not self._in_cache(kwargs.get('ids').replace('ga:', ''), id_, start_date, end_date):
+            if not cache or not self._in_cache(kwargs.get('ids').replace('ga:', ''), id_, start_date, end_date):
                 report = self._analyticsService.data().ga().get(**kwargs).execute()
                 last_hit = time.time()
                 if report.get('containSampledData'):
@@ -184,7 +184,7 @@ class Analytics(object):
                 actualDate = (startDate + timedelta(days=day)).strftime("%Y-%m-%d")
                 filename = Analytics.CACHE_UNSAMPLED_REPORT.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_,
                                                         date=actualDate)
-                if not self._in_cache_by_day(kwargs.get('ids').replace('ga:', ''), id_, actualDate):
+                if  not cache or not self._in_cache_by_day(kwargs.get('ids').replace('ga:', ''), id_, actualDate):
                     kwargs["start_date"] = actualDate
                     kwargs["end_date"] = actualDate
                     kwargs["start_index"] = 1
@@ -310,5 +310,5 @@ def filter_report_files_by_date(filename, start_date, end_date):
         bool: True if the report filename is in the date range, False otherwise"""
     start_date = datetime.strptime(start_date, "%Y-%m-%d")
     end_date = datetime.strptime(end_date, "%Y-%m-%d")
-    filename_date = datetime.strptime(filename, "report_%Y-%m-%d.csv")
+    filename_date = datetime.strptime(filename, "unsampled_report_%Y-%m-%d.csv")
     return start_date <= filename_date and end_date >= filename_date
