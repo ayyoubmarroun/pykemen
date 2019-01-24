@@ -73,6 +73,11 @@ class Analytics(object):
             else:
                 filenames = list(filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(
                     start_date=self.start_date, end_date=self.end_date), filenames))
+            
+            if not len(filenames):
+                columns = self.dimensions
+                columns.extend(self.metrics)
+                return pd.DataFrame(columns=columns)
             filenames.sort()
             dataframes = (pd.read_csv(self.path + filename, index_col=False, dtype=self._get_dtypes()) for filename in
                         filenames)
