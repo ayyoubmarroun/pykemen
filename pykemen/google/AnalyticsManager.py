@@ -71,7 +71,8 @@ class Analytics(object):
             if self.unsampled:
                 filenames = list(filter(lambda x: filter_report_files_by_date(x, self.start_date, self.end_date), filenames))
             else:
-                filenames = list(filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(self.start_date, self.end_date), filenames))
+                filenames = list(filter(lambda x: x == 'report_{start_date}_{end_date}.csv'.format(
+                    start_date=self.start_date, end_date=self.end_date), filenames))
             filenames.sort()
             dataframes = (pd.read_csv(self.path + filename, index_col=False, dtype=self._get_dtypes()) for filename in
                         filenames)
