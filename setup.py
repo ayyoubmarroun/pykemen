@@ -6,7 +6,7 @@ except ImportError:
 
 setup(
     name='pykemen',
-    version='0.1.8',
+    version='0.1.9',
     description='a pykemen pip-installable package',
     license='Eiup',
     packages=find_packages(),
