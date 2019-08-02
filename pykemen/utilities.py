@@ -4,6 +4,7 @@ import httplib2
 from googleapiclient.discovery import build
 from oauth2client import client
 import os
+from builtins import input
 
 def saveJson(filename, object):
     with open(filename, 'w') as f:
@@ -33,6 +34,10 @@ def getCredentials(secrets, credentials, scopes):
     return cre
 
 
-def create_api(api_name, api_version, scopes, secrets, credentials):
+def create_api(api_name, api_version, scopes=None, secrets=None, credentials=None):
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        return build(api_name, api_version)
+    elif None in (secrets, credentials, scopes):
+        raise ValueError("The variables {}, {} and {} should not be empty if there is no SA available!".format(scopes, secrets, credentials))
     http_auth = getCredentials(secrets, credentials, scopes).authorize(httplib2.Http())
     return build(api_name, api_version, http=http_auth)

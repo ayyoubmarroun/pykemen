@@ -4,16 +4,19 @@ This module have a class with built in functionality for Google Analytics.
 """
 __author__ = 'Metriplica-Ayyoub'
 
-from pykemen.utilities import create_api
-import pandas as pd
-from datetime import datetime, timedelta
-import hashlib
-import warnings
-from googleapiclient.http import MediaFileUpload
 import time
 import os
 import json
 import re
+import hashlib
+import logging
+import shutil
+import pandas as pd
+from pykemen.utilities import create_api
+from datetime import datetime, timedelta
+from googleapiclient.http import MediaFileUpload
+
+logger = logging.getLogger("Analytics")
 
 class Analytics(object):
     """Google Analytics class.
@@ -108,7 +111,7 @@ class Analytics(object):
             dtypes.update({metric: float for metric in self.metrics})
             return dtypes
 
-    def __init__(self, credentials, secrets):
+    def __init__(self, credentials=None, secrets=None):
         """Constructor for Analytics class.
 
         Args:
@@ -119,11 +122,14 @@ class Analytics(object):
             Analytics
         """
         super(Analytics, self).__init__()
-        scope = ["https://www.googleapis.com/auth/analytics.edit", "https://www.googleapis.com/auth/analytics",
-                 "https://www.googleapis.com/auth/analytics.manage.users"]
+        scope = [
+            "https://www.googleapis.com/auth/analytics.edit", 
+            "https://www.googleapis.com/auth/analytics",
+            "https://www.googleapis.com/auth/analytics.manage.users",
+            ]
         self._analyticsService = create_api("analytics", "v3", scope, secrets, credentials)
 
-    def get_report(self, verbose=False, unsampled = False, cache = True, **kwargs):
+    def get_report(self, verbose=False, unsampled=False, cache=True, **kwargs):
         """Downloads data from Analytics and caches the result. If the data is alredy cached, skips the
         download and directly returns an Analytics.AnalyticsReport.
 
@@ -164,7 +170,7 @@ class Analytics(object):
                 report = self._analyticsService.data().ga().get(**kwargs).execute()
                 last_hit = time.time()
                 if report.get('containSampledData'):
-                    warnings.warn("There are sampled results on the report: {dimensions}{metrics} - date: {start_date} to {end_date}".format(
+                    logger.warn("There are sampled results on the report: {dimensions}{metrics} - date: {start_date} to {end_date}".format(
                             dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), start_date=start_date, end_date=end_date))
                 rows.extend(report.get('rows', []))
                 iteration = 1
@@ -181,7 +187,7 @@ class Analytics(object):
                 df = pd.DataFrame(data=rows, columns=columns)
                 df.to_csv(filename, index=False, encoding='utf-8')
                 if verbose:
-                    print('Saved file' + filename)
+                    logger.info('Saved file' + filename)
         else:
             startDate = datetime.strptime(start_date, "%Y-%m-%d")
             endDate = datetime.strptime(end_date, "%Y-%m-%d")
@@ -196,7 +202,7 @@ class Analytics(object):
                     kwargs["start_index"] = 1
                     report = self._analyticsService.data().ga().get(**kwargs).execute()
                     if report.get("containsSampledData"):
-                        warnings.warn("There are sampled results on the report: {dimensions}{metrics} - date{date}".format(
+                        logger.warn("There are sampled results on the report: {dimensions}{metrics} - date{date}".format(
                             dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), date=actualDate))
                     rows.extend(report.get("rows", []))
                     iteration = 1
@@ -213,7 +219,7 @@ class Analytics(object):
                     df = pd.DataFrame(data=rows, columns=columns)
                     df.to_csv(filename, index=False, encoding='utf-8')
                     if verbose:
-                        print("Saved file " + filename)
+                        logger.info("Saved file " + filename)
                     rows = []
 
         return Analytics.AnalyticsReport(
@@ -287,13 +293,17 @@ class Analytics(object):
         path = report_path.format(profile=profile, id=id_, start_date=start_date, end_date=end_date)
         return os.path.isfile(path)
 
-    def clear_cache(self, id_, lifetime=180):
+    def clear_cache(self, id_=None, lifetime=180):
         """Clears cached reports for a given profile with in a given lifetime.
 
         Args:
             id_ (str): Profile id
             lifetime (int): lifetime in days, by default its 180 days
         """
+
+        if id_ is None:
+            shutil.rmtree('./cache')
+            return
         today = datetime.now()
         last_day = today - timedelta(days=lifetime)
         for reports in os.listdir('./cache/{id}/'.format(id=id_)):
@@ -301,7 +311,7 @@ class Analytics(object):
                 day = datetime.strptime(report, 'report_%Y-%m-%d.csv')
                 if day < last_day:
                     os.remove('./cache/{id}/{reports}/{report}'.format(id=id_, reports=reports, report=report))
-                    print('Removed cache/{id}/{reports}/{report}'.format(id=id_, reports=reports, report=report))
+                    logger.info('Removed cache/{id}/{reports}/{report}'.format(id=id_, reports=reports, report=report))
 
 
 def filter_report_files_by_date(filename, start_date, end_date):

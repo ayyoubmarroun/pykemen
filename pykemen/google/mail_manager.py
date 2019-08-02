@@ -27,7 +27,11 @@ class Mail(object):
         Returns:
             Mail: with given configuration.
         """
-        scopes = scopes = ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/bigquery.insertdata"]
+        scopes = scopes = [
+            "https://www.googleapis.com/auth/gmail.send", 
+            "https://www.googleapis.com/auth/bigquery", 
+            "https://www.googleapis.com/auth/bigquery.insertdata",
+            ]
         self._gmailService = utilities.create_api('gmail', 'v1', scopes, secrets, credentials)
 
     def _createMessage(self, to, subject, body, type='plain'):
