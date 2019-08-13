@@ -35,7 +35,7 @@ def getCredentials(secrets, credentials, scopes):
 
 
 def create_api(api_name, api_version, scopes=None, secrets=None, credentials=None):
-    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and None in (secrets, credentials, scopes):
         return build(api_name, api_version)
     elif None in (secrets, credentials, scopes):
         raise ValueError("The variables {}, {} and {} should not be empty if there is no SA available!".format(scopes, secrets, credentials))

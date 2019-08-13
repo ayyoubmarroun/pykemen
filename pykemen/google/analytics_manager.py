@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from googleapiclient.http import MediaFileUpload
 
 logger = logging.getLogger("Analytics")
+logger.setLevel(logging.WARNING)
 
 class Analytics(object):
     """Google Analytics class.
@@ -34,7 +35,7 @@ class Analytics(object):
         REPORT_RE = r"report_[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4}-[0-9]{2}-[0-9]{2}\.csv"
         UNSAMPLED_REPORT_RE = r'unsampled_report_[0-9]{4}-[0-9]{2}-[0-9]{2}\.csv'
 
-        def __init__(self, path, start_date, end_date, dimensions, metrics, filters, segments, sort, unsampled=False):
+        def __init__(self, path, start_date, end_date, dimensions, metrics, filters, segments, sort, df, unsampled=False, cache=True):
             """Init method initialize and create AnalyticsReport class.
 
             Args:
@@ -54,12 +55,14 @@ class Analytics(object):
             self.report_re = Analytics.AnalyticsReport.UNSAMPLED_REPORT_RE if unsampled else Analytics.AnalyticsReport.REPORT_RE
             self.start_date = start_date
             self.end_date = end_date
-            self.dimensions = dimensions.split(",")
+            self.dimensions = dimensions.split(",") if dimensions else None
             self.metrics = metrics.split(",")
             self.filters = filters
             self.segments = segments
             self.sort = sort.split(",")
             self.unsampled = unsampled
+            self.cache = cache
+            self._df=df
 
         def to_data_frame(self):
             """Retrieve report into a pandas dataFrame.
@@ -69,6 +72,8 @@ class Analytics(object):
             Returns:
                 pd.DataFrame
             """
+            if not self.cache:
+                return self._df
             filenames = os.listdir(self.path)
             filenames = list(filter(lambda x: re.match(self.report_re, x), filenames))
             if self.unsampled:
@@ -92,6 +97,7 @@ class Analytics(object):
                 elif sort != '':
                     dataframe = dataframe.sort_values(by=[sort])
             return dataframe
+
         def to_csv(self, filename):
             """Stores the report into a csv file.
 
@@ -129,12 +135,11 @@ class Analytics(object):
             ]
         self._analyticsService = create_api("analytics", "v3", scope, secrets, credentials)
 
-    def get_report(self, verbose=False, unsampled=False, cache=True, **kwargs):
+    def get_report(self, unsampled=False, cache=True, **kwargs):
         """Downloads data from Analytics and caches the result. If the data is alredy cached, skips the
         download and directly returns an Analytics.AnalyticsReport.
 
         Args:
-            verbose (boolean): True will print the logs in the console.
             unsampled (boolean): True will download the report day by day to try get unsampled data.
             kwargs (**dict): Analytics report configuration variable with all required parameters
 
@@ -156,6 +161,7 @@ class Analytics(object):
         columns = ','.join([kwargs.get('dimensions'), kwargs.get('metrics')])
         columns = columns.split(',')
         rows = []
+        data_frames = []
         if not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
             os.makedirs(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_))
         
@@ -185,8 +191,9 @@ class Analytics(object):
                     rows.extend(report.get('rows', []))
                     iteration += 1
                 df = pd.DataFrame(data=rows, columns=columns)
-                df.to_csv(filename, index=False, encoding='utf-8')
-                if verbose:
+
+                if cache:
+                    df.to_csv(filename, index=False, encoding='utf-8')
                     logger.info('Saved file' + filename)
         else:
             startDate = datetime.strptime(start_date, "%Y-%m-%d")
@@ -217,11 +224,19 @@ class Analytics(object):
                         rows.extend(report.get("rows", []))
                         iteration += 1
                     df = pd.DataFrame(data=rows, columns=columns)
-                    df.to_csv(filename, index=False, encoding='utf-8')
-                    if verbose:
+                    data_frames.append(df)
+                    if cache:
+                        df.to_csv(filename, index=False, encoding='utf-8')
                         logger.info("Saved file " + filename)
                     rows = []
-
+            df = pd.concat(data_frames, ignore_index=True)
+            df = df.groupby(kwargs.get("dimensions", "").split(",")).sum().reset_index()
+            for sort in kwargs.get("sort", "").split(","):
+                if sort.startswith('-'):
+                    df = df.sort_values(by=[sort[1:]], ascending=False)
+                elif sort != '':
+                    df = df.sort_values(by=[sort])
+            
         return Analytics.AnalyticsReport(
             Analytics.CACHE_DIR.format(profile=kwargs.get('ids', '').replace('ga:', ''), id=id_),
             start_date,
@@ -231,7 +246,9 @@ class Analytics(object):
             kwargs.get('filters', ''),
             kwargs.get('segments', ''),
             kwargs.get('sort', ""),
-            unsampled=unsampled
+            df,
+            unsampled=unsampled,
+            cache=cache
         )
 
     def data_import(self, accountId, webPropertyId, dataSourceId, filename):
