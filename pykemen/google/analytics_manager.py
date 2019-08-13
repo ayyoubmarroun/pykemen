@@ -160,6 +160,8 @@ class Analytics(object):
         end_date = kwargs.get('end_date')
         columns = ','.join([kwargs.get('dimensions'), kwargs.get('metrics')])
         columns = columns.split(',')
+        dtypes = {dimension: str for dimension in kwargs.get("dimensions","").split(",")}
+        dtypes.update({metric: float for metric in kwargs.get("metrics", "").split(",")})
         rows = []
         data_frames = []
         if not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
@@ -190,7 +192,7 @@ class Analytics(object):
                     last_hit = time.time()
                     rows.extend(report.get('rows', []))
                     iteration += 1
-                df = pd.DataFrame(data=rows, columns=columns)
+                df = pd.DataFrame(data=rows, columns=columns, dtypes=dtypes)
 
                 if cache:
                     df.to_csv(filename, index=False, encoding='utf-8')
@@ -223,7 +225,7 @@ class Analytics(object):
                         last_hit = time.time()
                         rows.extend(report.get("rows", []))
                         iteration += 1
-                    df = pd.DataFrame(data=rows, columns=columns)
+                    df = pd.DataFrame(data=rows, columns=columns, dtypes=dtypes)
                     data_frames.append(df)
                     if cache:
                         df.to_csv(filename, index=False, encoding='utf-8')
