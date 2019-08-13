@@ -164,7 +164,7 @@ class Analytics(object):
         dtypes.update({metric: float for metric in kwargs.get("metrics", "").split(",")})
         rows = []
         data_frames = []
-        if not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
+        if cache and not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
             os.makedirs(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_))
         
         if not unsampled:
