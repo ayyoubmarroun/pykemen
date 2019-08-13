@@ -192,7 +192,7 @@ class Analytics(object):
                     last_hit = time.time()
                     rows.extend(report.get('rows', []))
                     iteration += 1
-                df = pd.DataFrame(data=rows, columns=columns, dtypes=dtypes)
+                df = pd.DataFrame(data=rows, columns=columns)
 
                 if cache:
                     df.to_csv(filename, index=False, encoding='utf-8')
@@ -225,7 +225,7 @@ class Analytics(object):
                         last_hit = time.time()
                         rows.extend(report.get("rows", []))
                         iteration += 1
-                    df = pd.DataFrame(data=rows, columns=columns, dtypes=dtypes)
+                    df = pd.DataFrame(data=rows, columns=columns)
                     data_frames.append(df)
                     if cache:
                         df.to_csv(filename, index=False, encoding='utf-8')
@@ -238,7 +238,7 @@ class Analytics(object):
                     df = df.sort_values(by=[sort[1:]], ascending=False)
                 elif sort != '':
                     df = df.sort_values(by=[sort])
-            
+        df = df.astype(dtypes)
         return Analytics.AnalyticsReport(
             Analytics.CACHE_DIR.format(profile=kwargs.get('ids', '').replace('ga:', ''), id=id_),
             start_date,
