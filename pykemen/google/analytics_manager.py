@@ -11,10 +11,11 @@ import re
 import hashlib
 import logging
 import shutil
+import uuid
 import pandas as pd
 from pykemen.utilities import create_api
 from datetime import datetime, timedelta
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, HttpError
 
 logger = logging.getLogger("Analytics")
 logger.setLevel(logging.WARNING)
@@ -134,6 +135,7 @@ class Analytics(object):
             "https://www.googleapis.com/auth/analytics.manage.users",
             ]
         self._analyticsService = create_api("analytics", "v3", scope, secrets, credentials)
+        self._uuid = uuid.uuid4()
 
     def get_report(self, unsampled=False, cache=True, **kwargs):
         """Downloads data from Analytics and caches the result. If the data is alredy cached, skips the
@@ -146,8 +148,6 @@ class Analytics(object):
         Returns:
             Analytics.AnalyticsReport
         """
-        last_hit = 0
-        
         
         id_to_hash = ",".join([
             kwargs.get("dimensions", ""), 
@@ -155,6 +155,7 @@ class Analytics(object):
             kwargs.get("filters", ""),
             kwargs.get("segments", ""),
             ])
+        kwargs["quotaUser"] = self._uuid
         id_ = hashlib.md5(id_to_hash.encode('utf8')).hexdigest()
         start_date = kwargs.get('start_date')
         end_date = kwargs.get('end_date')
@@ -164,6 +165,7 @@ class Analytics(object):
         dtypes.update({metric: float for metric in kwargs.get("metrics", "").split(",")})
         rows = []
         data_frames = []
+        report = None
         if cache and not os.path.isdir(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_)):
             os.makedirs(Analytics.CACHE_DIR.format(profile=kwargs.get('ids').replace('ga:', ''), id=id_))
         
@@ -175,21 +177,43 @@ class Analytics(object):
                 end_date=end_date
             )
             if not cache or not self._in_cache(kwargs.get('ids').replace('ga:', ''), id_, start_date, end_date):
-                report = self._analyticsService.data().ga().get(**kwargs).execute()
-                last_hit = time.time()
+                qps = True
+                while qps:
+                    qps = False
+                    try:
+                        report = self._analyticsService.data().ga().get(**kwargs).execute()
+                    except HttpError as e:
+                        error_content = json.loads(e.content.decode("utf-8"))
+                        if error_content.get("error", {}).get("message") =="Rate Limit Exceeded":
+                            qps = True
+                            time.sleep(1)
+                            logger.warn("Rate limit excedeed!")
+                            logger.warn(e.content)
+                        else:
+                            logger.warn(e.content)
+                            raise e
                 if report.get('containSampledData'):
                     logger.warn("There are sampled results on the report: {dimensions}{metrics} - date: {start_date} to {end_date}".format(
                             dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), start_date=start_date, end_date=end_date))
                 rows.extend(report.get('rows', []))
                 iteration = 1
                 while report.get('nextLink'):
-                    try:
-                        time.sleep(.1 - (time.time()-last_hit))
-                    except ValueError:
-                        pass
                     kwargs['start_index'] = 1 + kwargs.get('max_results', 1000) * iteration
-                    report = self._analyticsService.data().ga().get(**kwargs).execute()
-                    last_hit = time.time()
+                    qps = True
+                    while qps:
+                        qps = False
+                        try:
+                            report = self._analyticsService.data().ga().get(**kwargs).execute()
+                        except HttpError as e:
+                            error_content = json.loads(e.content.decode("utf-8"))
+                            if error_content.get("error", {}).get("message") =="Rate Limit Exceeded":
+                                qps = True
+                                time.sleep(1)
+                                logger.warn("Rate limit excedeed!")
+                                logger.warn(e.content)
+                            else:
+                                logger.warn(e.content)
+                                raise e
                     rows.extend(report.get('rows', []))
                     iteration += 1
                 df = pd.DataFrame(data=rows, columns=columns)
@@ -209,20 +233,43 @@ class Analytics(object):
                     kwargs["start_date"] = actualDate
                     kwargs["end_date"] = actualDate
                     kwargs["start_index"] = 1
-                    report = self._analyticsService.data().ga().get(**kwargs).execute()
+                    qps = True
+                    while qps:
+                        qps = False
+                        try:
+                            report = self._analyticsService.data().ga().get(**kwargs).execute()
+                        except HttpError as e:
+                            error_content = json.loads(e.content.decode("utf-8"))
+                            if error_content.get("error", {}).get("message") =="Rate Limit Exceeded":
+                                qps = True
+                                time.sleep(1)
+                                logger.warn("Rate limit excedeed!")
+                                logger.warn(e.content)
+                            else:
+                                logger.warn(e.content)
+                                raise e
                     if report.get("containsSampledData"):
                         logger.warn("There are sampled results on the report: {dimensions}{metrics} - date{date}".format(
                             dimensions=kwargs.get("dimensions"), metrics=kwargs.get("metrics"), date=actualDate))
                     rows.extend(report.get("rows", []))
                     iteration = 1
                     while report.get("nextLink"):
-                        try:
-                            time.sleep(.1 - (time.time()-last_hit))
-                        except ValueError:
-                            pass
                         kwargs["start_index"] = 1 + kwargs.get('max_results', 1000) * iteration
-                        report = self._analyticsService.data().ga().get(**kwargs).execute()
-                        last_hit = time.time()
+                        qps = True
+                        while qps:
+                            qps = False
+                            try:
+                                report = self._analyticsService.data().ga().get(**kwargs).execute()
+                            except HttpError as e:
+                                error_content = json.loads(e.content.decode("utf-8"))
+                                if error_content.get("error", {}).get("message") =="Rate Limit Exceeded":
+                                    qps = True
+                                    time.sleep(1)
+                                    logger.warn("Rate limit excedeed!")
+                                    logger.warn(e.content)
+                                else:
+                                    logger.warn(e.content)
+                                    raise e
                         rows.extend(report.get("rows", []))
                         iteration += 1
                     df = pd.DataFrame(data=rows, columns=columns)

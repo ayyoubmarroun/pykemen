@@ -6,7 +6,7 @@ except ImportError:
 
 setup(
     name='pykemen',
-    version='0.2.5',
+    version='0.2.7',
     description='a pykemen pip-installable package',
     license='Eiup',
     packages=find_packages(),
@@ -16,7 +16,7 @@ setup(
     author_email='ayyoub@metriplica.com',
     keywords=['google apis', 'utilities'],
     url='https://github.com/ayyoubmarroun/pykemen',
-    download_url='https://github.com/ayyoubmarroun/pykemen/archive/0.2.5.tar.gz',
+    download_url='https://github.com/ayyoubmarroun/pykemen/archive/0.2.7.tar.gz',
     install_requires=[
         'httplib2',
         'pandas',
