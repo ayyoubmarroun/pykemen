@@ -13,9 +13,10 @@ import logging
 import shutil
 import uuid
 import pandas as pd
+from io import BytesIO
 from pykemen.utilities import create_api
 from datetime import datetime, timedelta
-from googleapiclient.http import MediaFileUpload, HttpError
+from googleapiclient.http import MediaFileUpload, HttpError, MediaIoBaseUpload
 
 logger = logging.getLogger("Analytics")
 logger.setLevel(logging.WARNING)
@@ -301,7 +302,7 @@ class Analytics(object):
             cache=cache
         )
 
-    def data_import(self, accountId, webPropertyId, dataSourceId, filename):
+    def data_import(self, accountId, webPropertyId, dataSourceId, filename=None, content=None):
         """Import a csv to Analytics through a data import.
 
         Args:
@@ -312,7 +313,12 @@ class Analytics(object):
 
         Returns:
             None if the upload succeed, raise an error otherwise"""
-        media = MediaFileUpload(filename, mimetype='application/octet-stream', resumable=False)
+        if filename is None and content is None:
+            raise Exception("In order to upload data, you have either to introduce a valid filename or a content.")
+        if filename:
+            media = MediaFileUpload(filename, mimetype='application/octet-stream', resumable=False)
+        else:
+            media = MediaIoBaseUpload(BytesIO(content.encode("utf-8")), mimetype='applicatios/octet-stream', resumable=False)
         response = self._analyticsService.management().uploads().uploadData(
             accountId=accountId,
             webPropertyId=webPropertyId,
