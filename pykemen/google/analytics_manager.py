@@ -279,6 +279,10 @@ class Analytics(object):
                         df.to_csv(filename, index=False, encoding='utf-8')
                         logger.info("Saved file " + filename)
                     rows = []
+                else:
+                    df = pd.read_csv(filename, index_col=False, dtype=dtypes)
+                    data_frames.append(df)
+                
             df = pd.concat(data_frames, ignore_index=True)
             df = df.astype(dtypes)
             df = df.groupby(kwargs.get("dimensions", "").split(",")).sum().reset_index()
