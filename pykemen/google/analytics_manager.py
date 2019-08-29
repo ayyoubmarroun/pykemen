@@ -279,6 +279,7 @@ class Analytics(object):
                         logger.info("Saved file " + filename)
                     rows = []
             df = pd.concat(data_frames, ignore_index=True)
+            df = df.astype(dtypes)
             df = df.groupby(kwargs.get("dimensions", "").split(",")).sum().reset_index()
             for sort in kwargs.get("sort", "").split(","):
                 if sort.startswith('-'):
