@@ -322,7 +322,7 @@ class Analytics(object):
         if filename:
             media = MediaFileUpload(filename, mimetype='application/octet-stream', resumable=False)
         else:
-            media = MediaIoBaseUpload(BytesIO(content.encode("utf-8")), mimetype='applicatios/octet-stream', resumable=False)
+            media = MediaIoBaseUpload(BytesIO(content.encode("utf-8")), mimetype='application/octet-stream', resumable=False)
         response = self._analyticsService.management().uploads().uploadData(
             accountId=accountId,
             webPropertyId=webPropertyId,
